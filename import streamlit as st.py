@@ -1,0 +1,65 @@
+import streamlit as st
+import pandas as pd
+import sqlite3
+from datetime import datetime
+
+# Database Setup
+conn = sqlite3.connect('showroom_finance.db', check_same_thread=False)
+c = conn.cursor()
+
+# Create Tables if they don't exist
+c.execute('''CREATE TABLE IF NOT EXISTS customers 
+             (id INTEGER PRIMARY KEY, name TEXT, phone TEXT, bike TEXT, total_loan REAL)''')
+c.execute('''CREATE TABLE IF NOT EXISTS payments 
+             (pay_id INTEGER PRIMARY KEY, cust_id INTEGER, amount REAL, due_date DATE, status TEXT)''')
+conn.commit()
+
+st.set_page_config(page_title="Showroom Finance Manager", layout="wide")
+
+st.title("🏍️ Motorcycle Finance & Installments")
+
+menu = ["Dashboard", "Add Customer", "Manage Payments"]
+choice = st.sidebar.selectbox("Menu", menu)
+
+if choice == "Dashboard":
+    st.subheader("Customer Overview")
+    data = pd.read_sql('SELECT * FROM customers', conn)
+    st.dataframe(data, use_container_width=True)
+
+elif choice == "Add Customer":
+    st.subheader("Register New Finance Customer")
+    with st.form("cust_form"):
+        name = st.text_input("Full Name")
+        phone = st.text_input("Phone Number")
+        bike = st.text_input("Motorcycle Model")
+        loan = st.number_input("Total Loan Amount", min_value=0.0)
+        submitted = st.form_submit_button("Save Customer")
+        
+        if submitted:
+            c.execute('INSERT INTO customers (name, phone, bike, total_loan) VALUES (?,?,?,?)', 
+                      (name, phone, bike, loan))
+            conn.commit()
+            st.success(f"Customer {name} added successfully!")
+
+elif choice == "Manage Payments":
+    st.subheader("Installment Tracking")
+    
+    # Select Customer
+    cust_list = pd.read_sql('SELECT id, name FROM customers', conn)
+    cust_id = st.selectbox("Select Customer", cust_list['id'], format_func=lambda x: cust_list[cust_list['id']==x]['name'].values[0])
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("### Log New Payment")
+        amt = st.number_input("Amount Paid")
+        date = st.date_input("Payment Date")
+        if st.button("Record Payment"):
+            c.execute('INSERT INTO payments (cust_id, amount, due_date, status) VALUES (?,?,?,?)', 
+                      (cust_id, amt, date, "Paid"))
+            conn.commit()
+            st.rerun()
+
+    with col2:
+        st.write("### Payment History")
+        history = pd.read_sql(f'SELECT amount, due_date, status FROM payments WHERE cust_id={cust_id}', conn)
+        st.table(history)
